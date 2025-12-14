@@ -9,6 +9,10 @@ A Python project that compares game prices between Steam (scraping) and IsThereA
 - Gets Metacritic ratings from RAWG API
 - Compares prices and outputs which store is cheaper
 
+## Demo
+
+![Morse Code Converter Demo](assets/gifs/GamePriceShowcase.gif)
+
 ## Technologies Used
 
 - Python 3.x
