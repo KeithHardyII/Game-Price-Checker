@@ -11,11 +11,25 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import Integer, String, Text, DateTime
 import os
+'''
+Remove main and move functionality into flask routes
+add html css bootstrap and wtforms
+finish adding login logic
+establish relationships between databases
+'''
 
 # Create Flask App
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('FLASK_KEY')
 ckeditor = CKEditor(app)
+
+# Configure Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+
+@login_manager.user_loader
+def load_user(user_id):
+    return db.get_or_404(User, user_id)
 
 # Create Database
 class Base(DeclarativeBase):
@@ -23,6 +37,13 @@ class Base(DeclarativeBase):
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DB_URI", "sqlite:///accounts.db")
 db = SQLAlchemy(model_class=Base)
 db.init_app(app)
+
+# Create a User table for all registered users
+class User(UserMixin, db.Model):
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(100), unique=True)
+    password: Mapped[str] = mapped_column(String(100))
 
 # Create favorite table
 class Favorite(db.Model):
@@ -32,9 +53,21 @@ class Favorite(db.Model):
     game_name = db.Column(db.String(255), nullable=False)
     saved_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
+# Create snapshot table
+class Price_snapshots(db.Model):
+    __tablename__ = "prices"
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.String(100), nullable=False)
+    game_name = db.Column(db.String(255), nullable=False)
+    api_price = db.Column(db.Float, nullable=False)
+    scraped_price = db.Column(db.Float, nullable=False)
+    checked_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
 with app.app_context():
     db.create_all()
 
+# TEMP: running inside app context for now
+# Will move this logic into routes after auth is added
 def main():
     title = input("Enter game title: ")
 
@@ -59,12 +92,39 @@ def main():
     print(f"Steam's price: ${game.scraped_price}\n"
           f"ITAD's price: ${game.api_price}\n"
           f"{result}")
+    store_price = Price_snapshots(game_id=game_id,game_name=game.title,api_price=game.api_price,scraped_price=game.scraped_price)
+    db.session.add(store_price)
+    db.session.commit()
 
 
 
 @app.route('/')
 def default():
     return "<h1>Test<h1/>"
+
+@app.route("/user/add") # add a form and salt passwords
+def add_user():
+    username = request.args.get("username")
+    user_password = request.args.get("user_password")
+
+    if not username or not user_password:
+        return "Missing username or user_password", 400
+
+    new_user = User(username=username, password=user_password)
+    db.session.add(new_user)
+    db.session.commit()
+
+    return f"Saved {username} as a new user"
+
+@app.route("/user")
+def list_users():
+    users = User.query.all()
+    return "<br>".join(f"{u.username} {u.password}" for u in users)
+
+@app.route("/history")
+def list_history():
+    history = Price_snapshots.query.all()
+    return "<br>".join(f"{f.game_name} ({f.game_id}) Api = {f.api_price}  Scraped = {f.scraped_price}" for f in history)
 
 @app.route("/favorites/add")
 def add_favorite():
@@ -86,5 +146,6 @@ def list_favorites():
     return "<br>".join(f"{f.game_name} ({f.game_id})" for f in favorites)
 
 if __name__ == "__main__":
-    main()
+    with app.app_context(): # Temp used for testing comment out these 2 lines for flask functionality
+        main()
     app.run(debug=True, port=5001)
